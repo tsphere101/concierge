@@ -67,6 +67,12 @@ pub fn brew_service(runner: &dyn CmdRunner, action: &str, service: &str) -> Resu
     runner.output_str("brew", &["services", action, service])
 }
 
+pub fn rest(runner: &dyn CmdRunner) -> Result<(), String> {
+    let script = r#"tell application "Amphetamine" to end session"#;
+    osascript(runner, script)?;
+    Ok(())
+}
+
 pub fn wake(runner: &dyn CmdRunner, hours: u64) -> Result<(), String> {
     let script = format!(
         r#"tell application "Amphetamine" to start new session with options {{duration:{hours}, interval:hours, displaySleepAllowed:false}}"#
@@ -269,6 +275,22 @@ mod tests {
         let mock = MockCmdRunner::new()
             .output_result(Err("brew not found"));
         assert_eq!(brew_service(&mock, "start", "nginx"), Err("brew not found".into()));
+    }
+
+    #[test]
+    fn test_rest_ok() {
+        let mock = MockCmdRunner::new()
+            .output_result(Ok(""));
+        assert!(rest(&mock).is_ok());
+        let calls = mock.calls.lock().unwrap();
+        assert!(calls[0].contains("end session"));
+    }
+
+    #[test]
+    fn test_rest_err() {
+        let mock = MockCmdRunner::new()
+            .output_result(Err("Amphetamine not found"));
+        assert_eq!(rest(&mock), Err("Amphetamine not found".into()));
     }
 
     #[test]

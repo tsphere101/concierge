@@ -107,6 +107,14 @@ impl Concierge {
     }
 
     #[tool(
+        title = "Rest",
+        description = "End Amphetamine wake prevention session"
+    )]
+    async fn rest(&self) -> String {
+        result_to_string(macos::rest(&*self.runner), |_| "Amphetamine session ended".into())
+    }
+
+    #[tool(
         title = "Wake",
         description = "Keep the Mac awake for N hours using Amphetamine"
     )]
