@@ -34,6 +34,12 @@ pub struct WakeArgs {
     pub hours: Option<f64>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BrewServiceArgs {
+    pub action: String,
+    pub service: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

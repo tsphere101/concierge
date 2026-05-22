@@ -4,7 +4,7 @@ mod macos;
 
 use std::sync::Arc;
 
-use args::{ClipboardWriteArgs, OpenArgs, RevealArgs, SayArgs, VolumeArgs, WakeArgs};
+use args::{BrewServiceArgs, ClipboardWriteArgs, OpenArgs, RevealArgs, SayArgs, VolumeArgs, WakeArgs};
 use cmd::CmdRunner;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
@@ -113,6 +113,25 @@ impl Concierge {
     async fn wake(&self, Parameters(args): Parameters<WakeArgs>) -> String {
         let hours = args.hours.unwrap_or(1.0) as u64;
         result_to_string(macos::wake(&*self.runner, hours), |_| format!("Amphetamine session started for {hours} hour(s)"))
+    }
+
+    #[tool(
+        title = "Brew Service",
+        description = "Start or stop a Homebrew service (e.g. nginx)"
+    )]
+    async fn brew_service(&self, Parameters(args): Parameters<BrewServiceArgs>) -> String {
+        let service = args.service.as_deref().unwrap_or("nginx");
+        match args.action.as_str() {
+            "start" => result_to_string(
+                macos::brew_service(&*self.runner, "start", service),
+                |_| format!("Started {service}"),
+            ),
+            "stop" => result_to_string(
+                macos::brew_service(&*self.runner, "stop", service),
+                |_| format!("Stopped {service}"),
+            ),
+            _ => format!("Unknown action: {}. Use start or stop", args.action),
+        }
     }
 }
 

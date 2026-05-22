@@ -63,6 +63,10 @@ pub fn say(runner: &dyn CmdRunner, text: &str, voice: Option<&str>, rate: Option
     runner.spawn("say", &args).map(|_| ())
 }
 
+pub fn brew_service(runner: &dyn CmdRunner, action: &str, service: &str) -> Result<String, String> {
+    runner.output_str("brew", &["services", action, service])
+}
+
 pub fn wake(runner: &dyn CmdRunner, hours: u64) -> Result<(), String> {
     let script = format!(
         r#"tell application "Amphetamine" to start new session with options {{duration:{hours}, interval:hours, displaySleepAllowed:false}}"#
@@ -236,6 +240,35 @@ mod tests {
         let mock = MockCmdRunner::new()
             .spawn_result(Err("failed"));
         assert_eq!(say(&mock, "hello", None, None), Err("failed".into()));
+    }
+
+    #[test]
+    fn test_brew_service_start_ok() {
+        let mock = MockCmdRunner::new()
+            .output_result(Ok("started"));
+        assert_eq!(brew_service(&mock, "start", "nginx"), Ok("started".into()));
+        assert_eq!(
+            mock.calls.lock().unwrap()[0],
+            "output brew services start nginx"
+        );
+    }
+
+    #[test]
+    fn test_brew_service_stop_ok() {
+        let mock = MockCmdRunner::new()
+            .output_result(Ok("stopped"));
+        assert_eq!(brew_service(&mock, "stop", "nginx"), Ok("stopped".into()));
+        assert_eq!(
+            mock.calls.lock().unwrap()[0],
+            "output brew services stop nginx"
+        );
+    }
+
+    #[test]
+    fn test_brew_service_err() {
+        let mock = MockCmdRunner::new()
+            .output_result(Err("brew not found"));
+        assert_eq!(brew_service(&mock, "start", "nginx"), Err("brew not found".into()));
     }
 
     #[test]
