@@ -1,56 +1,34 @@
+mod args;
+mod cmd;
 mod macos;
 
+use std::sync::Arc;
+
+use args::{ClipboardWriteArgs, OpenArgs, RevealArgs, SayArgs, VolumeArgs, WakeArgs};
+use cmd::CmdRunner;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
     handler::server::wrapper::Parameters,
     model::*,
     prompt, prompt_handler, prompt_router,
-    schemars,
     service::RequestContext,
     tool, tool_handler, tool_router,
     transport::stdio,
 };
-use serde::Deserialize;
-
-// ── Tool argument structs ───────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct ClipboardWriteArgs {
-    text: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct OpenArgs {
-    target: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct RevealArgs {
-    path: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct VolumeArgs {
-    action: String,
-    level: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct SayArgs {
-    text: String,
-    voice: Option<String>,
-    rate: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct WakeArgs {
-    hours: Option<f64>,
-}
 
 // ── Server ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
-struct Concierge;
+struct Concierge {
+    runner: Arc<dyn CmdRunner>,
+}
+
+fn result_to_string<T>(result: Result<T, String>, ok_msg: impl FnOnce(T) -> String) -> String {
+    match result {
+        Ok(v) => ok_msg(v),
+        Err(e) => format!("Error: {e}"),
+    }
+}
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
@@ -62,10 +40,7 @@ impl Concierge {
         annotations(read_only_hint = true)
     )]
     async fn battery(&self) -> String {
-        match macos::battery() {
-            Ok(s) => s,
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::battery(&*self.runner), |s| s)
     }
 
     #[tool(
@@ -74,10 +49,7 @@ impl Concierge {
         annotations(read_only_hint = true)
     )]
     async fn clipboard_read(&self) -> String {
-        match macos::clipboard_read() {
-            Ok(s) => s,
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::clipboard_read(&*self.runner), |s| s)
     }
 
     #[tool(
@@ -86,10 +58,7 @@ impl Concierge {
         annotations(destructive_hint = false)
     )]
     async fn clipboard_write(&self, Parameters(args): Parameters<ClipboardWriteArgs>) -> String {
-        match macos::clipboard_write(&args.text) {
-            Ok(_) => "Copied to clipboard".into(),
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::clipboard_write(&*self.runner, &args.text), |_| "Copied to clipboard".into())
     }
 
     #[tool(
@@ -97,10 +66,7 @@ impl Concierge {
         description = "Open a file path or URL with the default application"
     )]
     async fn open(&self, Parameters(args): Parameters<OpenArgs>) -> String {
-        match macos::open(&args.target) {
-            Ok(_) => format!("Opened: {}", args.target),
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::open(&*self.runner, &args.target), |_| format!("Opened: {}", args.target))
     }
 
     #[tool(
@@ -108,10 +74,7 @@ impl Concierge {
         description = "Reveal a file or folder in Finder"
     )]
     async fn reveal(&self, Parameters(args): Parameters<RevealArgs>) -> String {
-        match macos::reveal(&args.path) {
-            Ok(_) => format!("Revealed: {}", args.path),
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::reveal(&*self.runner, &args.path), |_| format!("Revealed: {}", args.path))
     }
 
     #[tool(
@@ -119,26 +82,15 @@ impl Concierge {
         description = "Control system output volume"
     )]
     async fn volume(&self, Parameters(args): Parameters<VolumeArgs>) -> String {
+        let runner = &*self.runner;
         match args.action.as_str() {
             "set" => {
                 let level = args.level.unwrap_or(50.0) as i64;
-                match macos::volume_set(level) {
-                    Ok(_) => format!("Volume set to {level}%"),
-                    Err(e) => format!("Error: {e}"),
-                }
+                result_to_string(macos::volume_set(runner, level), |_| format!("Volume set to {level}%"))
             }
-            "get" => match macos::volume_get() {
-                Ok(v) => format!("Volume: {}%", v.trim()),
-                Err(e) => format!("Error: {e}"),
-            },
-            "mute" => match macos::volume_mute() {
-                Ok(_) => "Muted".into(),
-                Err(e) => format!("Error: {e}"),
-            },
-            "unmute" => match macos::volume_unmute() {
-                Ok(_) => "Unmuted".into(),
-                Err(e) => format!("Error: {e}"),
-            },
+            "get" => result_to_string(macos::volume_get(runner), |v| format!("Volume: {}%", v.trim())),
+            "mute" => result_to_string(macos::volume_mute(runner), |_| "Muted".into()),
+            "unmute" => result_to_string(macos::volume_unmute(runner), |_| "Unmuted".into()),
             _ => format!("Unknown action: {}. Use set/get/mute/unmute", args.action),
         }
     }
@@ -148,10 +100,10 @@ impl Concierge {
         description = "Speak text aloud using text-to-speech"
     )]
     async fn say(&self, Parameters(args): Parameters<SayArgs>) -> String {
-        match macos::say(&args.text, args.voice.as_deref(), args.rate) {
-            Ok(_) => format!("Speaking: {}", args.text),
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(
+            macos::say(&*self.runner, &args.text, args.voice.as_deref(), args.rate),
+            |_| format!("Speaking: {}", args.text),
+        )
     }
 
     #[tool(
@@ -160,10 +112,7 @@ impl Concierge {
     )]
     async fn wake(&self, Parameters(args): Parameters<WakeArgs>) -> String {
         let hours = args.hours.unwrap_or(1.0) as u64;
-        match macos::wake(hours) {
-            Ok(_) => format!("Amphetamine session started for {hours} hour(s)"),
-            Err(e) => format!("Error: {e}"),
-        }
+        result_to_string(macos::wake(&*self.runner, hours), |_| format!("Amphetamine session started for {hours} hour(s)"))
     }
 }
 
@@ -176,9 +125,10 @@ impl Concierge {
         description = "Get a full system status report (battery, volume, clipboard)"
     )]
     async fn system_status(&self) -> Vec<PromptMessage> {
-        let battery = macos::battery().unwrap_or_else(|e| format!("(unavailable: {e})"));
-        let volume = macos::volume_get().unwrap_or_else(|e| format!("(unavailable: {e})"));
-        let clipboard = macos::clipboard_read().unwrap_or_else(|e| format!("(unavailable: {e})"));
+        let runner = &*self.runner;
+        let battery = macos::battery(runner).unwrap_or_else(|e| format!("(unavailable: {e})"));
+        let volume = macos::volume_get(runner).unwrap_or_else(|e| format!("(unavailable: {e})"));
+        let clipboard = macos::clipboard_read(runner).unwrap_or_else(|e| format!("(unavailable: {e})"));
 
         vec![PromptMessage::new_text(
             PromptMessageRole::User,
@@ -261,8 +211,8 @@ impl ServerHandler for Concierge {
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         let text = match request.uri.as_str() {
-            "concierge://system/battery" => macos::battery(),
-            "concierge://system/volume" => macos::volume_get(),
+            "concierge://system/battery" => macos::battery(&*self.runner),
+            "concierge://system/volume" => macos::volume_get(&*self.runner),
             _ => {
                 return Err(McpError::resource_not_found(
                     "resource_not_found",
@@ -304,7 +254,31 @@ impl ServerHandler for Concierge {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let service = Concierge.serve(stdio()).await?;
+    let concierge = Concierge {
+        runner: Arc::new(cmd::RealCmdRunner),
+    };
+    let service = concierge.serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_result_to_string_ok() {
+        assert_eq!(
+            result_to_string::<&str>(Ok("hello"), |s| format!("got: {s}")),
+            "got: hello"
+        );
+    }
+
+    #[test]
+    fn test_result_to_string_err() {
+        assert_eq!(
+            result_to_string::<()>(Err("failed".into()), |_| unreachable!()),
+            "Error: failed"
+        );
+    }
 }
