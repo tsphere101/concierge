@@ -73,6 +73,19 @@ pub fn rest(runner: &dyn CmdRunner) -> Result<(), String> {
     Ok(())
 }
 
+pub fn amphetamine_status(runner: &dyn CmdRunner) -> Result<String, String> {
+    let script = r#"tell application "Amphetamine"
+        set isActive to session is active
+        if isActive then
+            set timeRemaining to session time remaining
+            return "Active: " & (timeRemaining as text) & " seconds remaining"
+        else
+            return "No active session"
+        end if
+    end tell"#;
+    osascript(runner, script)
+}
+
 pub fn wake(runner: &dyn CmdRunner, hours: u64) -> Result<(), String> {
     let script = format!(
         r#"tell application "Amphetamine" to start new session with options {{duration:{hours}, interval:hours, displaySleepAllowed:false}}"#

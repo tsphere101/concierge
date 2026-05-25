@@ -107,6 +107,15 @@ impl Concierge {
     }
 
     #[tool(
+        title = "Wake Status",
+        description = "Check current Amphetamine wake prevention session status",
+        annotations(read_only_hint = true)
+    )]
+    async fn wake_status(&self) -> String {
+        result_to_string(macos::amphetamine_status(&*self.runner), |s| s)
+    }
+
+    #[tool(
         title = "Rest",
         description = "End Amphetamine wake prevention session"
     )]
