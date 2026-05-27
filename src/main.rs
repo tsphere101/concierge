@@ -1,10 +1,11 @@
 mod args;
 mod cmd;
 mod macos;
+mod webhook;
 
 use std::sync::Arc;
 
-use args::{BrewServiceArgs, ClipboardWriteArgs, OpenArgs, RevealArgs, SayArgs, VolumeArgs, WakeArgs};
+use args::{BrewServiceArgs, ClipboardWriteArgs, DiscordWebhookArgs, OpenArgs, RevealArgs, SayArgs, VolumeArgs, WakeArgs};
 use cmd::CmdRunner;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
@@ -149,6 +150,17 @@ impl Concierge {
             ),
             _ => format!("Unknown action: {}. Use start or stop", args.action),
         }
+    }
+
+    #[tool(
+        title = "Discord Webhook",
+        description = "Send a message to Discord via webhook"
+    )]
+    async fn discord_webhook(&self, Parameters(args): Parameters<DiscordWebhookArgs>) -> String {
+        result_to_string(
+            webhook::send_discord_message(&args.content),
+            |_| "Message sent to Discord".into(),
+        )
     }
 }
 

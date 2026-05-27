@@ -40,6 +40,11 @@ pub struct BrewServiceArgs {
     pub service: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DiscordWebhookArgs {
+    pub content: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +110,19 @@ mod tests {
     fn test_wake_args_defaults() {
         let args: WakeArgs = serde_json::from_str(r#"{}"#).unwrap();
         assert_eq!(args.hours, None);
+    }
+
+    #[test]
+    fn test_discord_webhook_args_deserialize() {
+        let args: DiscordWebhookArgs =
+            serde_json::from_str(r#"{"content":"hello world"}"#).unwrap();
+        assert_eq!(args.content, "hello world");
+    }
+
+    #[test]
+    fn test_discord_webhook_args_empty_content() {
+        let args: DiscordWebhookArgs =
+            serde_json::from_str(r#"{"content":""}"#).unwrap();
+        assert_eq!(args.content, "");
     }
 }
